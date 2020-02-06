@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import uk.gov.pay.connector.app.StripeAuthTokens;
 import uk.gov.pay.connector.app.StripeGatewayConfig;
+import uk.gov.pay.connector.charge.dao.ChargeDao;
 import uk.gov.pay.connector.charge.model.domain.ChargeEntity;
 import uk.gov.pay.connector.gateway.model.request.RefundGatewayRequest;
 import uk.gov.pay.connector.gatewayaccount.model.GatewayAccountEntity;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class StripeRequestTest {
     private StripeRefundRequest stripeRefundRequest;
+    private String chargeExternalId = "chargeExternalId";
 
     @Mock
     RefundEntity refund;
@@ -31,15 +33,17 @@ public class StripeRequestTest {
     StripeGatewayConfig stripeGatewayConfig;
     @Mock
     StripeAuthTokens stripeAuthTokens;
+    @Mock
+    ChargeDao chargeDao;
 
     @Before
     public void setUp() {
         when(gatewayAccount.getCredentials()).thenReturn(ImmutableMap.of("stripe_account_id", "stripe_connect_account_id"));
-        when(refund.getChargeEntity()).thenReturn(charge);
+        when(charge.getGatewayTransactionId()).thenReturn("gatewayTransactionId");
         when(stripeGatewayConfig.getAuthTokens()).thenReturn(stripeAuthTokens);
         when(stripeAuthTokens.getLive()).thenReturn("live");
         when(stripeAuthTokens.getTest()).thenReturn("test");
-        final RefundGatewayRequest refundGatewayRequest = RefundGatewayRequest.valueOf(refund, gatewayAccount);
+        final RefundGatewayRequest refundGatewayRequest = RefundGatewayRequest.valueOf(refund, gatewayAccount, charge);
 
         stripeRefundRequest = StripeRefundRequest.of(refundGatewayRequest, "charge_id", stripeGatewayConfig);
     }

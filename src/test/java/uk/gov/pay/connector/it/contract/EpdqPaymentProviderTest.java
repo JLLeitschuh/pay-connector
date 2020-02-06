@@ -284,8 +284,8 @@ public class EpdqPaymentProviderTest {
     }
 
     private RefundGatewayRequest buildRefundRequest(ChargeEntity chargeEntity, Long refundAmount) {
-        return RefundGatewayRequest.valueOf(new RefundEntity(chargeEntity, refundAmount, userExternalId, userEmail),
-                gatewayAccountEntity);
+        return RefundGatewayRequest.valueOf(new RefundEntity(refundAmount, userExternalId, userEmail, chargeEntity.getExternalId()),
+                gatewayAccountEntity, chargeEntity);
     }
 
     private CancelGatewayRequest buildCancelRequest(ChargeEntity chargeEntity, String transactionId) {

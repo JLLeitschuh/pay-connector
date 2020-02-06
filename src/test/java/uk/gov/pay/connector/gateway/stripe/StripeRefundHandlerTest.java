@@ -9,6 +9,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import uk.gov.pay.connector.app.StripeGatewayConfig;
+import uk.gov.pay.connector.charge.model.domain.ChargeEntity;
 import uk.gov.pay.connector.gateway.GatewayClient;
 import uk.gov.pay.connector.gateway.GatewayException;
 import uk.gov.pay.connector.gateway.GatewayException.GatewayErrorException;
@@ -52,6 +53,8 @@ public class StripeRefundHandlerTest {
     private GatewayClient gatewayClient;
     @Mock
     private StripeGatewayConfig gatewayConfig;
+    @Mock
+    private ChargeEntity chargeEntity;
 
     @Before
     public void setUp() throws Exception {
@@ -65,14 +68,9 @@ public class StripeRefundHandlerTest {
         RefundEntity refundEntity = RefundEntityFixture
                 .aValidRefundEntity()
                 .withAmount(100L)
-                .withGatewayAccountEntity(gatewayAccount)
                 .build();
-
-        refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccount);
-
-        GatewayClient.Response response = mock(GatewayClient.Response.class);
-        when(response.getEntity()).thenReturn(load(STRIPE_PAYMENT_INTENT_WITH_CHARGE_RESPONSE));
-        when(gatewayClient.postRequestFor(any(StripeGetPaymentIntentRequest.class))).thenReturn(response);
+        when(chargeEntity.getGatewayTransactionId()).thenReturn("gatewayTransactionId");
+        refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccount, chargeEntity);
     }
 
     @Test
@@ -81,9 +79,8 @@ public class StripeRefundHandlerTest {
                 .aValidRefundEntity()
                 .withAmount(100L)
                 .withChargeTransactionId("pi_123")
-                .withGatewayAccountEntity(gatewayAccount)
                 .build();
-        refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccount);
+        refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccount, chargeEntity);
         mockTransferSuccess();
         mockRefundSuccess();
 

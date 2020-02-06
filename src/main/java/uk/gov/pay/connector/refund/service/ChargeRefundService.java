@@ -3,6 +3,7 @@ package uk.gov.pay.connector.refund.service;
 import com.google.inject.persist.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uk.gov.pay.connector.charge.dao.ChargeDao;
 import uk.gov.pay.connector.charge.exception.ChargeNotFoundRuntimeException;
 import uk.gov.pay.connector.charge.model.domain.Charge;
 import uk.gov.pay.connector.charge.model.domain.ChargeEntity;
@@ -39,7 +40,7 @@ public class ChargeRefundService {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private final ChargeService chargeService;
+    private final ChargeDao chargeDao;
     private final RefundDao refundDao;
     private final GatewayAccountDao gatewayAccountDao;
     private final PaymentProviders providers;
@@ -47,10 +48,10 @@ public class ChargeRefundService {
     private StateTransitionService stateTransitionService;
 
     @Inject
-    public ChargeRefundService(ChargeService chargeService, RefundDao refundDao, GatewayAccountDao gatewayAccountDao, PaymentProviders providers,
+    public ChargeRefundService(ChargeDao chargeDao, RefundDao refundDao, GatewayAccountDao gatewayAccountDao, PaymentProviders providers,
                                UserNotificationService userNotificationService, StateTransitionService stateTransitionService
     ) {
-        this.chargeService = chargeService;
+        this.chargeDao = chargeDao;
         this.refundDao = refundDao;
         this.gatewayAccountDao = gatewayAccountDao;
         this.providers = providers;
@@ -61,29 +62,28 @@ public class ChargeRefundService {
     public ChargeRefundResponse doRefund(Long accountId, String chargeExternalId, RefundRequest refundRequest) {
         GatewayAccountEntity gatewayAccountEntity = gatewayAccountDao.findById(accountId).orElseThrow(
                 () -> new GatewayAccountNotFoundException(accountId));
-        RefundEntity refundEntity = createRefund(accountId, chargeExternalId, refundRequest);
+        ChargeEntity chargeEntity = chargeDao.findByExternalId(chargeExternalId)
+                .orElseThrow(() -> new ChargeNotFoundRuntimeException(chargeExternalId));
+        RefundEntity refundEntity = createRefund(gatewayAccountEntity, chargeEntity, refundRequest);
         GatewayRefundResponse gatewayRefundResponse = providers
                 .byName(PaymentGatewayName.valueFrom(gatewayAccountEntity.getGatewayName()))
-                .refund(RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity));
-        RefundEntity refund = processRefund(gatewayRefundResponse, refundEntity.getId(), gatewayAccountEntity);
+                .refund(RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity, chargeEntity));
+        RefundEntity refund = processRefund(gatewayRefundResponse, refundEntity.getId(), gatewayAccountEntity, chargeEntity);
         return new ChargeRefundResponse(gatewayRefundResponse, refund);
     }
 
     @Transactional
     @SuppressWarnings("WeakerAccess")
-    public RefundEntity createRefund(Long accountId, String chargeExternalId, RefundRequest refundRequest) {
-        GatewayAccountEntity gatewayAccountEntity = gatewayAccountDao.findById(accountId).orElseThrow(
-                () -> new GatewayAccountNotFoundException(accountId));
-        return chargeService.findCharge(chargeExternalId, gatewayAccountEntity.getId()).map(charge -> {
-            List<RefundEntity> refundEntityList = refundDao.findRefundsByChargeExternalId(charge.getExternalId());
-            long availableAmount = validateRefundAndGetAvailableAmount(charge, gatewayAccountEntity, refundRequest, refundEntityList);
-            RefundEntity refundEntity = createRefundEntity(refundRequest, charge);
+    public RefundEntity createRefund(GatewayAccountEntity gatewayAccountEntity, ChargeEntity chargeEntity, RefundRequest refundRequest) {
+            List<RefundEntity> refundEntityList = refundDao.findRefundsByChargeExternalId(chargeEntity.getExternalId());
+            long availableAmount = validateRefundAndGetAvailableAmount(Charge.from(chargeEntity), gatewayAccountEntity, refundRequest, refundEntityList);
+            RefundEntity refundEntity = createRefundEntity(refundRequest, chargeEntity);
 
             logger.info("Card refund request sent - charge_external_id={}, status={}, amount={}, transaction_id={}, account_id={}, operation_type=Refund, amount_available_refund={}, amount_requested_refund={}, provider={}, provider_type={}, user_external_id={}",
-                    charge.getExternalId(),
-                    fromString(charge.getStatus()),
-                    charge.getAmount(),
-                    charge.getGatewayTransactionId(),
+                    chargeEntity.getExternalId(),
+                    fromString(chargeEntity.getStatus()),
+                    chargeEntity.getAmount(),
+                    chargeEntity.getGatewayTransactionId(),
                     gatewayAccountEntity.getId(),
                     availableAmount,
                     refundRequest.getAmount(),
@@ -91,7 +91,6 @@ public class ChargeRefundService {
                     gatewayAccountEntity.getType(),
                     refundRequest.getUserExternalId());
             return refundEntity;
-        }).orElseThrow(() -> new ChargeNotFoundRuntimeException(chargeExternalId));
     }
 
     public Optional<RefundEntity> findByProviderAndReference(String name, String reference) {
@@ -99,7 +98,7 @@ public class ChargeRefundService {
     }
 
     private RefundEntity processRefund(GatewayRefundResponse gatewayRefundResponse, Long refundEntityId,
-                                       GatewayAccountEntity gatewayAccountEntity) {
+                                       GatewayAccountEntity gatewayAccountEntity, ChargeEntity chargeEntity) {
         RefundStatus refundStatus = determineRefundStatus(gatewayRefundResponse);
 
         if (refundStatus == REFUNDED) {
@@ -110,26 +109,26 @@ public class ChargeRefundService {
             setRefundStatus(refundEntityId, REFUND_SUBMITTED);
         }
 
-        return updateRefund(gatewayRefundResponse, refundEntityId, refundStatus, gatewayAccountEntity);
+        return updateRefund(gatewayRefundResponse, refundEntityId, refundStatus, gatewayAccountEntity, chargeEntity);
     }
 
     @Transactional
     @SuppressWarnings("WeakerAccess")
     public RefundEntity updateRefund(GatewayRefundResponse gatewayRefundResponse, Long refundEntityId,
-                                     RefundStatus refundStatus, GatewayAccountEntity gatewayAccountEntity) {
+                                     RefundStatus refundStatus, GatewayAccountEntity gatewayAccountEntity,
+                                     ChargeEntity chargeEntity) {
         Optional<RefundEntity> refund = refundDao.findById(refundEntityId);
 
         refund.ifPresent(refundEntity -> {
-            ChargeEntity chargeEntity = refundEntity.getChargeEntity();
-
             logger.info("Refund {} ({} {}) for {} ({} {}) for {} ({}) - {} .'. {} -> {}",
                     refundEntity.getExternalId(), gatewayAccountEntity.getGatewayName(), refundEntity.getReference(),
-                    chargeEntity.getExternalId(), gatewayAccountEntity.getGatewayName(), chargeEntity.getGatewayTransactionId(),
+                    refundEntity.getChargeExternalId(), gatewayAccountEntity.getGatewayName(),
+                    refundEntity.getGatewayTransactionId(),
                     gatewayAccountEntity.getAnalyticsId(), gatewayAccountEntity.getId(),
                     gatewayRefundResponse, refundEntity.getStatus(), refundStatus);
 
             if (refundStatus == REFUNDED) {
-                userNotificationService.sendRefundIssuedEmail(refundEntity);
+                userNotificationService.sendRefundIssuedEmail(refundEntity, chargeEntity, gatewayAccountEntity);
             }
 
             getRefundReference(refundEntity, gatewayRefundResponse).ifPresent(refundEntity::setReference);
@@ -161,11 +160,10 @@ public class ChargeRefundService {
 
     @Transactional
     @SuppressWarnings("WeakerAccess")
-    public RefundEntity createRefundEntity(RefundRequest refundRequest, Charge charge) {
-        // @TODO(sfount) PP-6095 remove charge entity from refund entity - we can then rely solely on the Charge POJO
-        ChargeEntity chargeEntity = chargeService.findChargeById(charge.getExternalId());
-        RefundEntity refundEntity = new RefundEntity(chargeEntity, refundRequest.getAmount(),
-                refundRequest.getUserExternalId(), refundRequest.getUserEmail());
+    public RefundEntity createRefundEntity(RefundRequest refundRequest, ChargeEntity charge) {
+        RefundEntity refundEntity = new RefundEntity(refundRequest.getAmount(),
+                refundRequest.getUserExternalId(), refundRequest.getUserEmail(), charge.getExternalId());
+        refundEntity.setChargeId(charge.getId());
         transitionRefundState(refundEntity, RefundStatus.CREATED);
         refundDao.persist(refundEntity);
 

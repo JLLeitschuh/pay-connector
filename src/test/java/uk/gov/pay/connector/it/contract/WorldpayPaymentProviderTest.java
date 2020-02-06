@@ -229,9 +229,9 @@ public class WorldpayPaymentProviderTest {
 
         assertThat(captureResponse.isSuccessful(), is(true));
 
-        RefundEntity refundEntity = new RefundEntity(chargeEntity, 1L, userExternalId, userEmail);
+        RefundEntity refundEntity = new RefundEntity(1L, userExternalId, userEmail, chargeEntity.getExternalId());
 
-        GatewayRefundResponse refundResponse = paymentProvider.refund(RefundGatewayRequest.valueOf(refundEntity, validGatewayAccount));
+        GatewayRefundResponse refundResponse = paymentProvider.refund(RefundGatewayRequest.valueOf(refundEntity, validGatewayAccount, chargeEntity));
 
         assertTrue(refundResponse.isSuccessful());
     }

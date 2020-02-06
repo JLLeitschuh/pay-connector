@@ -231,8 +231,8 @@ public class SmartpayPaymentProviderTest {
         CaptureResponse captureGatewayResponse = smartpay.capture(CaptureGatewayRequest.valueOf(chargeEntity));
         assertTrue(captureGatewayResponse.isSuccessful());
 
-        RefundEntity refundEntity = new RefundEntity(chargeEntity, 1L, userExternalId, userEmail);
-        RefundGatewayRequest refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity);
+        RefundEntity refundEntity = new RefundEntity(1L, userExternalId, userEmail, chargeEntity.getExternalId());
+        RefundGatewayRequest refundRequest = RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity, chargeEntity);
         GatewayRefundResponse refundResponse = smartpay.refund(refundRequest);
 
         assertThat(refundResponse.isSuccessful(), is(true));

@@ -101,13 +101,13 @@ public class WorldpayPaymentProviderTest extends WorldpayBasePaymentProviderTest
     @Test
     public void testRefundRequestContainsReference() throws Exception {
         ChargeEntity chargeEntity = chargeEntityFixture.withTransactionId("transaction-id").build();
-        RefundEntity refundEntity = RefundEntityFixture.aValidRefundEntity().withCharge(chargeEntity).build();
+        RefundEntity refundEntity = RefundEntityFixture.aValidRefundEntity().build();
 
         when(mockGatewayClient.postRequestFor(any(URI.class), any(GatewayAccountEntity.class), any(GatewayOrder.class), anyMap()))
                 .thenThrow(new GatewayException.GatewayErrorException("Unexpected HTTP status code 400 from gateway"));
 
         var worldpayPaymentProvider = new WorldpayPaymentProvider(configuration, gatewayClientFactory, environment);
-        worldpayPaymentProvider.refund(RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity));
+        worldpayPaymentProvider.refund(RefundGatewayRequest.valueOf(refundEntity, gatewayAccountEntity, chargeEntity));
 
         String expectedRefundRequest =
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +

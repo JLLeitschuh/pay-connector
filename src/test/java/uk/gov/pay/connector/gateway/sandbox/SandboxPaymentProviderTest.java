@@ -134,7 +134,7 @@ public class SandboxPaymentProviderTest {
     public void refund_shouldSucceedWhenRefundingAnyCharge() {
 
         GatewayRefundResponse refundResponse = provider.refund(RefundGatewayRequest.valueOf(RefundEntityFixture.aValidRefundEntity().build(),
-                gatewayAccountEntity));
+                gatewayAccountEntity, ChargeEntityFixture.aValidChargeEntity().build()));
 
         assertThat(refundResponse.isSuccessful(), is(true));
         assertThat(refundResponse.getReference().isPresent(), is(true));

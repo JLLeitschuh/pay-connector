@@ -63,22 +63,23 @@ public class UserNotificationService {
         this.metricRegistry = environment.metrics();
     }
 
-    public Future<Optional<String>> sendRefundIssuedEmail(RefundEntity refundEntity) {
-        return sendEmail(EmailNotificationType.REFUND_ISSUED, refundEntity.getChargeEntity(), buildRefundEmailPersonalisationFrom(refundEntity));
+    public Future<Optional<String>> sendRefundIssuedEmail(RefundEntity refundEntity, ChargeEntity chargeEntity, GatewayAccountEntity gatewayAccountEntity) {
+        return sendEmail(EmailNotificationType.REFUND_ISSUED, chargeEntity, gatewayAccountEntity,
+                buildRefundEmailPersonalisationFrom(chargeEntity, refundEntity));
     }
 
-    public Future<Optional<String>> sendPaymentConfirmedEmail(ChargeEntity chargeEntity) {
-        return sendEmail(EmailNotificationType.PAYMENT_CONFIRMED, chargeEntity, buildConfirmationEmailPersonalisationFrom(chargeEntity));
+    public Future<Optional<String>> sendPaymentConfirmedEmail(ChargeEntity chargeEntity, GatewayAccountEntity gatewayAccountEntity) {
+        return sendEmail(EmailNotificationType.PAYMENT_CONFIRMED, chargeEntity, gatewayAccountEntity,
+                buildConfirmationEmailPersonalisationFrom(chargeEntity));
     }
 
-    private Future<Optional<String>> sendEmail(EmailNotificationType emailNotificationType, ChargeEntity chargeEntity, HashMap<String, String> personalisation) {
-        GatewayAccountEntity gatewayAccount = chargeEntity.getGatewayAccount();
-        boolean isEmailEnabled = ofNullable(gatewayAccount.getEmailNotifications().get(emailNotificationType))
+    private Future<Optional<String>> sendEmail(EmailNotificationType emailNotificationType, ChargeEntity chargeEntity, GatewayAccountEntity gatewayAccountEntity, HashMap<String, String> personalisation) {
+        boolean isEmailEnabled = ofNullable(gatewayAccountEntity.getEmailNotifications().get(emailNotificationType))
                 .map(EmailNotificationEntity::isEnabled)
                 .orElse(false);
         
-        if (!emailNotifyGloballyEnabled || !isEmailEnabled || gatewayAccount.getEmailCollectionMode().equals(OFF) ||
-                gatewayAccount.getEmailCollectionMode().equals(OPTIONAL) && ofNullable(chargeEntity.getEmail()).isEmpty()) {
+        if (!emailNotifyGloballyEnabled || !isEmailEnabled || gatewayAccountEntity.getEmailCollectionMode().equals(OFF) ||
+                gatewayAccountEntity.getEmailCollectionMode().equals(OPTIONAL) && ofNullable(chargeEntity.getEmail()).isEmpty()) {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
@@ -182,8 +183,7 @@ public class UserNotificationService {
         return map;
     }
 
-    private HashMap<String, String> buildRefundEmailPersonalisationFrom(RefundEntity refundEntity) {
-        ChargeEntity chargeEntity = refundEntity.getChargeEntity();
+    private HashMap<String, String> buildRefundEmailPersonalisationFrom(ChargeEntity chargeEntity, RefundEntity refundEntity) {
         HashMap<String, String> map = new HashMap<>();
 
         map.put("serviceReference", chargeEntity.getReference().toString());
