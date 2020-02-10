@@ -696,6 +696,58 @@ public class GatewayAccountResourceIT extends GatewayAccountResourceTestBase {
                 .statusCode(NOT_FOUND.getStatusCode());
     }
 
+    @Test
+    public void shouldGetAllGatewayAccountsWhenSearchWithNoParams() {
+        String gatewayAccountId1 = createAGatewayAccountFor("sandbox");
+        updateGatewayAccount(gatewayAccountId1, "allow_moto", true);
+        createAGatewayAccountFor("sandbox");
+
+        givenSetup()
+                .get("/v1/api/accounts")
+                .then()
+                .statusCode(OK.getStatusCode())
+                .body("accounts", hasSize(2));
+    }
+
+    @Test
+    public void shouldGetGatewayAccountsByIds() {
+        String gatewayAccountId1 = createAGatewayAccountFor("sandbox");
+        String gatewayAccountId2 = createAGatewayAccountFor("sandbox");
+        createAGatewayAccountFor("sandbox");
+
+        givenSetup()
+                .get("/v1/api/accounts?accountIds=" + gatewayAccountId1 + "," + gatewayAccountId2)
+                .then()
+                .statusCode(OK.getStatusCode())
+                .body("accounts", hasSize(2))
+                .body("accounts[0].gateway_account_id", is(Integer.valueOf(gatewayAccountId1)))
+                .body("accounts[1].gateway_account_id", is(Integer.valueOf(gatewayAccountId2)));
+    }
+
+    @Test
+    public void shouldGetGatewayAccountsByMotoEnabled() {
+        String gatewayAccountId1 = createAGatewayAccountFor("sandbox");
+        updateGatewayAccount(gatewayAccountId1, "allow_moto", true);
+        createAGatewayAccountFor("sandbox");
+
+        givenSetup()
+                .get("/v1/api/accounts?moto_enabled=true")
+                .then()
+                .statusCode(OK.getStatusCode())
+                .body("accounts", hasSize(1))
+                .body("accounts[0].gateway_account_id", is(Integer.valueOf(gatewayAccountId1)));
+    }
+
+    @Test
+    public void shouldReturn422ForMotoEnabledNotBooleanValue() {
+        givenSetup()
+                .get("/v1/api/accounts?moto_enabled=blah")
+                .then()
+                .statusCode(422)
+                .body("message[0]", is("Parameter [moto_enabled] must be true or false"));
+    }
+
+
     private String createAGatewayAccountFor(String provider, String desc, String id) {
         return extractGatewayAccountId(createAGatewayAccountFor(testContext.getPort(), provider, desc, id));
     }
