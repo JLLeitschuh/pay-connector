@@ -211,4 +211,18 @@ public class ChargeDao extends JpaDao<ChargeEntity> {
                 .setMaxResults(1)
                 .getResultList().stream().findFirst();
     }
+
+    public void expungeCharge(Long id) {
+        ChargeEntity chargeEntity = entityManager.get().find(ChargeEntity.class, id);
+        entityManager.get().remove(chargeEntity);
+    }
+
+    public void updateChargeParityCheckDate(Long id, ZonedDateTime dateTime) {
+        entityManager.get()
+                .createQuery("UPDATE ChargeEntity c SET c.parityCheckDatem = :parityCheckedDate" +
+                        " WHERE c.id = :id")
+                .setParameter("parityCheckedDate", dateTime)
+                .setParameter("id",id)
+                .getSingleResult();
+    }
 }

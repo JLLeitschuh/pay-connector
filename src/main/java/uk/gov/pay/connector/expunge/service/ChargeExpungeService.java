@@ -6,8 +6,11 @@ import uk.gov.pay.connector.app.ConnectorConfiguration;
 import uk.gov.pay.connector.app.config.ExpungeConfig;
 import uk.gov.pay.connector.charge.dao.ChargeDao;
 import uk.gov.pay.connector.charge.model.domain.ChargeEntity;
+import uk.gov.pay.connector.charge.model.domain.ChargeStatus;
+import uk.gov.pay.connector.tasks.ParityCheckService;
 
 import javax.inject.Inject;
+import java.time.ZonedDateTime;
 import java.util.Optional;
 
 import static net.logstash.logback.argument.StructuredArguments.kv;
@@ -18,11 +21,14 @@ public class ChargeExpungeService {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ChargeDao chargeDao;
     private final ExpungeConfig expungeConfig;
-
+    private final ParityCheckService parityCheckService;
+    
     @Inject
-    public ChargeExpungeService(ChargeDao chargeDao, ConnectorConfiguration connectorConfiguration) {
+    public ChargeExpungeService(ChargeDao chargeDao, ConnectorConfiguration connectorConfiguration,
+                                ParityCheckService parityCheckService) {
         this.chargeDao = chargeDao;
         expungeConfig = connectorConfiguration.getExpungeConfig();
+        this.parityCheckService = parityCheckService;
     }
 
     public void expunge(Integer noOfChargesToExpungeQueryParam) {
@@ -38,14 +44,21 @@ public class ChargeExpungeService {
                         );
 
                 mayBeChargeEntity.ifPresent(chargeEntity -> {
-                    // TODO: in PP-6098 
-                    // Parity check charges with Ledger and 1. delete charge if matches or 2. update charge with parity_check_date
+                    if (hasFinalisedState(chargeEntity)
+                            && parityCheckService.parityCheckChargeForExpunger(chargeEntity)) {
+                        chargeDao.expungeCharge(chargeEntity.getId());
+                        logger.info("Charge expunged from connector {}", 
+                                kv(PAYMENT_EXTERNAL_ID, chargeEntity.getExternalId()));
+                    } else {
+                        chargeDao.updateChargeParityCheckDate(chargeEntity.getId(), ZonedDateTime.now());
+                        logger.info("Charge does not meet expunging criteria from connector {}", 
+                                kv(PAYMENT_EXTERNAL_ID, chargeEntity.getExternalId()));
+                    }
+                }); 
 
-                    logger.info("Charge expunged from connector", kv(PAYMENT_EXTERNAL_ID, chargeEntity.getExternalId()));
-                });
-
-                if (mayBeChargeEntity.isEmpty())
+                if (mayBeChargeEntity.isEmpty()) {
                     break;
+                }
                 noOfChargesProcessed++;
             }
         } else {
@@ -58,5 +71,9 @@ public class ChargeExpungeService {
             return noOfChargesToExpungeQueryParam;
         }
         return expungeConfig.getNumberOfChargesToExpunge();
+    }
+
+    private boolean hasFinalisedState(ChargeEntity chargeEntity) {
+        return ChargeStatus.fromString(chargeEntity.getStatus()).toExternal().isFinished();
     }
 }

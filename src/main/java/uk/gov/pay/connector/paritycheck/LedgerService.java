@@ -29,6 +29,8 @@ public class LedgerService {
                 .path(format("/v1/transaction/%s", id))
                 .queryParam("override_account_id_restriction", "true");
 
+        System.out.println("About to ledge to " + uri);
+        
         Response response = client
                 .target(uri)
                 .request()
